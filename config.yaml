@@ -1,0 +1,10 @@
+path: '/content/gdrive/My Drive/Model_train/data' # dataset root dir
+train: images/train  # train images (relative to 'path')
+val: images/val  # val images (relative to 'path')
+
+# Classes
+names:
+  0: stain
+  1: hole
+  2: loop
+  3: setup
