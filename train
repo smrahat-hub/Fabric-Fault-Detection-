@@ -1,0 +1,142 @@
+from google.colab import drive
+
+drive.mount('/content/gdrive')
+
+ROOT_DIR = '/content/gdrive/My Drive/Model_train/data'
+
+!pip install ultralytics
+
+import os
+
+from ultralytics import YOLO
+
+
+# Load a model
+model = YOLO('yolov8n.pt')  # build a new model from scratch
+
+# Use the model
+results = model.train(data=os.path.join(ROOT_DIR, "config.yaml"), epochs=100)  # train the model
+
+!scp -r /content/runs '/content/gdrive/My Drive/Model_train/data'
+
+##Image predict
+
+from google.colab import drive
+import os
+import cv2
+from ultralytics import YOLO
+from google.colab.patches import cv2_imshow
+from google.colab import files
+
+# Define directories
+MODEL_PATH = '/content/gdrive/My Drive/Model_train/data/runs/detect/train2/weights/best.pt'
+OUTPUT_DIR = '/content/gdrive/My Drive/Model_train/data/predict_images'
+
+
+# Load the custom model
+print(f"Loading model from {MODEL_PATH}")
+model = YOLO(MODEL_PATH)
+
+def preprocess_image(image):
+    # Resize the image to the input size of the model
+    return cv2.resize(image, (640, 640))
+
+def detect_detection(image_path):
+    # Load the image
+    image = cv2.imread(image_path)
+    if image is None:
+        print(f"Error: Could not load image from {image_path}. Check if the path is correct.")
+        return
+
+    # Preprocess the image
+    image = preprocess_image(image)
+
+    # Perform prediction on the entire preprocessed image
+    results = model(image)[0]
+
+    # Annotate the image with predictions
+    threshold = 0.01  # Lower threshold temporarily
+    detections = 0
+    for result in results.boxes.data.tolist():
+        x1, y1, x2, y2, score, class_id = result
+        if score > threshold:
+            detections += 1
+            cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+            cv2.putText(image, results.names[int(class_id)].upper(), (int(x1), int(y1 - 10)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.3, (0, 255, 0), 1, cv2.LINE_AA)
+
+    if detections == 0:
+        print("No detections above the threshold.")
+    else:
+        print(f"Number of detections: {detections}")
+
+    # Save and display the annotated image
+    output_image_path = os.path.join(OUTPUT_DIR, os.path.basename(image_path).replace('.jpg', '_processed.jpg'))
+    cv2.imwrite(output_image_path, image)
+    print(f"Saved processed image to {output_image_path}")
+
+    # Display the annotated image
+    cv2_imshow(image)
+    #cv2.waitKey(0)
+    #cv2.destroyAllWindows()
+
+# Upload a photo
+uploaded = files.upload()
+
+# Detect stains on the uploaded image
+for filename in uploaded.keys():
+    print(f"Processing {filename}...")
+    detect_detection(filename)
+
+
+## Video Predict 
+import cv2
+import os
+from ultralytics import YOLO
+from google.colab import files
+
+# Load the model
+model = YOLO('/content/gdrive/My Drive/Model_train/data/runs/detect/train2/weights/last.pt')
+
+# Upload video
+uploaded = files.upload()
+
+
+output_dir = '/content/gdrive/My Drive/Model_train/data/videos'
+
+
+def process_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+
+    # Set the output path to save the processed video in Google Drive
+    out_path = os.path.join(output_dir, os.path.basename(video_path).replace('.mp4', '_output.mp4'))
+    out = None
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        if out is None:
+            height, width = frame.shape[:2]
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'MP4V'), fps, (width, height))
+
+        results = model(frame)[0]
+        for result in results.boxes.data.tolist():
+            x1, y1, x2, y2, score, class_id = result
+            if score > 0.01:
+                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+                cv2.putText(frame, results.names[int(class_id)], (int(x1), int(y1 - 10)),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        out.write(frame)
+
+    cap.release()
+    out.release()
+    print(f"Processed video saved at: {out_path}")
+
+# Process uploaded video
+for video in uploaded.keys():
+    process_video(video)
+
